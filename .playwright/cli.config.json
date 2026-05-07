@@ -1,0 +1,12 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": false,
+    "userDataDir": "/Users/bytedance/Documents/DCDN 写作/doc-verify/.playwright/profile",
+    "launchOptions": {
+      "headless": false,
+      "args": ["--no-sandbox", "--disable-gpu-sandbox", "--disable-dev-shm-usage"]
+    }
+  },
+  "outputDir": "/Users/bytedance/Documents/DCDN 写作/doc-verify/fact-base/console-facts"
+}

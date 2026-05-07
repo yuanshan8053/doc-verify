@@ -1,0 +1,21 @@
+{
+  "name": "doc-verify",
+  "version": "0.1.0",
+  "description": "Technical documentation verification toolkit — verify docs against product console and source code",
+  "bin": {
+    "doc-verify": "bin/doc-verify.js"
+  },
+  "scripts": {
+    "init": "node bin/doc-verify.js init",
+    "install-skills": "node bin/doc-verify.js install",
+    "login": "node bin/doc-verify.js login"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@playwright/cli": ">=0.1.12"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,13 @@
+# Fact base — generated output (per product, per user)
+# Contains credentials, screenshots, verification results
+# Each user generates their own from source code + console
+fact-base/
+
+# Chrome runtime profile (contains cookies, login data, sessions)
+.playwright/profile/
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "project": "iga-docs",
+  "console_url": "https://console.byteplus.com/iga",
+  "source_code_path": "/Users/bytedance/Documents/DCDN 写作/poc/volc-iga",
+  "docs_path": "/Users/bytedance/Documents/DCDN 写作/poc/Docs_BP-智能全球加速",
+  "mode": "source-enhanced",
+  "locale": "en",
+  "locales": ["zh", "en"],
+  "fact_base": "fact-base/iga-byteplus-en",
+  "pilot": {
+    "doc": "02_User Guide/02_Instances/00_Domains/03_Caching/03_Configure caching rules.md",
+    "source_page": "src/pages/Domain/DomainDetail/CacheControl/"
+  }
+}
