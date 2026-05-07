@@ -1,194 +1,204 @@
 # doc-verify
 
-> Automated technical documentation verification — fact-check your docs against source code and the live product console.
+> 技术文档自动化验证工具——从源码提取事实、对照控制台校验、生成差异报告。
 
-## Why This Exists
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-yellow.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Technical documentation rots. UI labels change, buttons get renamed, options are added or removed — but docs stay stale. Manually clicking through every console page to verify each claim is tedious and error-prone. **doc-verify** automates this: extract facts from source code, verify against the live console, and generate diff reports that tell you exactly what's wrong and how to fix it.
+## 为什么需要这个工具
 
-## How It Works
+技术文档会腐化。按钮改名了、选项增减了、标签换词了——文档还停留在旧版本。手动逐页点控制台核对，既低效又容易遗漏。
+
+doc-verify 让 AI Agent 自动完成这件事：从源码提取 UI 事实，对照控制台验证，输出差异报告，告诉你哪里错了、怎么改。
+
+## 工作原理
+
+两种模式，按是否有源码选择：
+
+| 模式 | 适用场景 | 事实来源 |
+|------|---------|---------|
+| **Mode A — 源码增强** | 有前端源码 | 源码 70% + 控制台 30% |
+| **Mode B — 纯控制台** | 无源码 | 控制台 100% |
+
+工作流：
 
 ```
-Source code ──→ Extract UI facts ──→ Cross-reference ──→ Diff report
-                    │                     ↑
-                    └── Collection plan ──┘
-                                              ↑
-Console ──────→ Verify/collect facts ─────────┘
+源码 ──→ 提取 UI 事实 ──→ 交叉比对 ──→ 差异报告
+              │                  ↑
+              └── 采集计划 ──────┘
+                                     ↑
+控制台 ───→ 验证/采集事实 ───────────┘
 ```
 
-**Mode A — Source-enhanced** (when you have source code): Extract facts from the frontend codebase first, then verify a subset against the console. Source code provides 70% of facts; console confirms and fills gaps.
+## 快速开始
 
-**Mode B — Console-only** (when you don't have source code): Collect all facts directly from the product console. Slower but works for any product.
-
-## Quick Start
-
-**Prerequisites**: Node.js 18+, [Playwright CLI](https://github.com/microsoft/playwright-cli)
+**前置条件**：Node.js 18+、[Playwright CLI](https://github.com/microsoft/playwright-cli)
 
 ```bash
 git clone https://github.com/yuanshan8053/doc-verify.git
 cd doc-verify
 
-# 1. Initialize a project
+# 1. 初始化项目（交互式，输入控制台地址、源码路径、语言等）
 node bin/doc-verify.js init
 
-# 2. Install skills to your AI agent
+# 2. 安装 Skills 到 AI Agent 目录
 node bin/doc-verify.js install
 
-# 3. Log in to the console
+# 3. 登录控制台（浏览器打开后手动登录，完成后 Ctrl+C）
 node bin/doc-verify.js login
 
-# 4. Tell your AI agent to verify your docs
+# 4. 让 AI Agent 验证你的文档
 ```
 
-## CLI Commands
+初始化完成后，项目目录结构如下：
 
-| Command | Description |
-|---------|-------------|
-| `doc-verify init` | Create a new verification project (interactive) |
-| `doc-verify install` | Install skills to AI agent directories |
-| `doc-verify login` | Open browser for manual login, save auth state |
-| `doc-verify console` | Open browser with saved auth state (one command) |
-| `doc-verify login-save` | Save auth state from currently open browser |
+```
+your-project/
+├── config/project.json         # 项目配置
+├── .playwright/cli.config.json # Playwright 配置
+├── skills/                     # 5 个 Skill 定义
+└── fact-base/iga-byteplus-en/  # 事实库（按产品-控制台-语言组织）
+```
+
+## CLI 命令
+
+| 命令 | 说明 | 示例 |
+|------|------|------|
+| `init` | 交互式创建验证项目 | `node bin/doc-verify.js init` |
+| `install` | 安装 Skills 到 AI Agent 目录 | `node bin/doc-verify.js install` |
+| `login` | 打开浏览器手动登录，保存认证状态 | `node bin/doc-verify.js login` |
+| `console` | 一键打开浏览器 + 加载认证 + 导航到控制台 | `node bin/doc-verify.js console` |
+| `login-save` | 保存当前浏览器的认证状态 | `node bin/doc-verify.js login-save` |
 
 ## Skills
 
-doc-verify uses 5 Skills that guide your AI agent through the verification workflow:
+doc-verify 通过 5 个 Skill 指导 AI Agent 完成验证工作流。每个 Skill 职责单一，可独立使用，也可由编排器串联：
 
-| Skill | Purpose |
-|-------|---------|
-| `ui-code-fact-extractor` | Extract UI facts from frontend source code (generic, LLM-driven) |
-| `doc-collection-planner` | Generate a collection plan from docs + source facts |
-| `console-fact-collector` | Collect or verify facts from the product console via Playwright CLI |
-| `doc-fact-verifier` | Compare doc claims against the fact base, generate diff report |
-| `doc-console-verifier` | Orchestrate the complete workflow (top-level Skill) |
+| Skill | 职责 | 何时使用 |
+|-------|------|---------|
+| `ui-code-fact-extractor` | 从前端源码提取 UI 事实（通用、LLM 驱动） | 有源码时 |
+| `doc-collection-planner` | 根据文档 + 源码事实生成采集计划 | 每次验证前 |
+| `console-fact-collector` | 通过 Playwright CLI 从控制台采集/验证事实 | 需要控制台验证时 |
+| `doc-fact-verifier` | 将文档声明与事实库比对，生成差异报告 | 事实库就绪后 |
+| `doc-console-verifier` | 编排完整工作流（顶层 Skill） | 端到端验证 |
 
-### Skill Workflow
+编排器工作流：
 
 ```
-1. Read config → determine mode + fact-base path
-2. [Optional] Source code extraction (Mode A)
-3. Generate collection plan
-4. Console collection/verification
-5. Document verification
-6. Output diff report
+读取配置 → [可选] 源码提取 → 生成采集计划 → 控制台验证 → 文档比对 → 输出报告
 ```
 
-## Project Structure
+## 项目结构
 
 ```
 doc-verify/
-├── bin/doc-verify.js           # CLI tool
-├── config/project.json         # Project configuration
-├── .playwright/cli.config.json # Playwright CLI config
-├── skills/                     # 5 Skill definitions
+├── bin/doc-verify.js           # CLI 工具
+├── config/project.json         # 项目配置
+├── .playwright/cli.config.json # Playwright CLI 配置
+├── skills/                     # Skill 定义
 │   ├── ui-code-fact-extractor/
 │   ├── doc-collection-planner/
 │   ├── console-fact-collector/
 │   ├── doc-fact-verifier/
 │   └── doc-console-verifier/
-├── fact-base/                  # Generated output (gitignored)
+├── fact-base/                  # 运行时产物（已 gitignore）
 │   └── {product}-{console}-{locale}/
-│       ├── meta.json
-│       ├── source-facts/       # .json + .md per page
-│       ├── console-facts/      # Verification results + screenshots
-│       ├── merged-facts/       # Combined fact base
-│       └── reports/            # Diff reports
+│       ├── meta.json           # 产品元数据
+│       ├── source-facts/       # 源码事实（.json + .md 双格式）
+│       ├── console-facts/      # 控制台验证结果 + 截图
+│       ├── merged-facts/       # 合并后的事实库
+│       └── reports/            # 差异报告
 └── package.json
 ```
 
-### Fact-base Convention
+### 事实库组织方式
 
-Facts are organized by **product-console-locale** to support multiple products:
+事实库按 **产品-控制台-语言** 三维组织，支持多产品并行：
 
 ```
-fact-base/iga-byteplus-en/      # IGA product, BytePlus console, English
-fact-base/dcdn-volcengine-zh/   # DCDN product, Volcengine console, Chinese
+fact-base/iga-byteplus-en/      # IGA 产品，BytePlus 控制台，英文
+fact-base/dcdn-volcengine-zh/   # DCDN 产品，火山引擎控制台，中文
 ```
 
-Each fact file has **dual format**:
-- `.json` — machine-readable, for programmatic comparison
-- `.md` — human-readable, for review and collaboration
+每个事实文件提供 **双格式输出**：
 
-## Configuration
+| 格式 | 用途 |
+|------|------|
+| `.json` | 机器可读，供程序化比对 |
+| `.md` | 人类可读，便于审阅和协作 |
+
+## 配置说明
 
 ### project.json
 
-```json
-{
-  "project": "iga-docs",
-  "console_url": "https://console.byteplus.com/iga",
-  "source_code_path": "/path/to/source",
-  "docs_path": "/path/to/docs",
-  "mode": "source-enhanced",
-  "locale": "en",
-  "locales": ["zh", "en"],
-  "fact_base": "fact-base/iga-byteplus-en"
-}
-```
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `project` | string | 项目名称 |
+| `console_url` | string | 控制台 URL |
+| `source_code_path` | string \| null | 前端源码路径，为 null 则使用 Mode B |
+| `docs_path` | string \| null | 文档根目录 |
+| `mode` | `"source-enhanced"` \| `"console-only"` | 验证模式 |
+| `locale` | string | 主语言 |
+| `locales` | string[] | 所有支持的语言 |
+| `fact_base` | string | 事实库路径，格式：`fact-base/{product}-{console}-{locale}` |
 
-### Playwright CLI config
+### Playwright CLI 配置
 
-```json
-{
-  "browser": {
-    "browserName": "chromium",
-    "isolated": false,
-    "userDataDir": ".playwright/profile",
-    "launchOptions": {
-      "headless": false,
-      "args": ["--no-sandbox", "--disable-gpu-sandbox", "--disable-dev-shm-usage"]
-    }
-  }
-}
-```
+`.playwright/cli.config.json` 中的 `--no-sandbox` 和 `--disable-gpu-sandbox` 参数是 **Trae IDE 沙箱环境必需的**。不加这两个参数，Chrome GPU 进程会崩溃并退出（报错 `GPU process isn't usable. Goodbye.`）。
 
-> The `--no-sandbox` and `--disable-gpu-sandbox` flags are required when running inside Trae IDE's sandbox. Without them, Chrome's GPU process crashes with `GPU process isn't usable. Goodbye.`
+## 输出示例
 
-## Console Verification Tips
-
-### Multi-step Forms
-
-Some forms (e.g., "Add domain" wizard) require valid test data to advance through steps. Use these strategies:
-
-| Strategy | How | When to use |
-|----------|-----|-------------|
-| Reuse + modify | Pick an existing item, change the prefix | Domain ownership verification blocks you |
-| API creation | Use the product API to create test resources | API is available |
-| Minimal input | Fill only required fields | Simple forms |
-
-### Auth State
-
-- After `state-load`, always `goto` the target URL to refresh the page — auth state doesn't take effect on already-rendered pages
-- Auth states expire. If login fails, use `doc-verify login` to re-authenticate
-
-## Sample Output
-
-A diff report looks like this:
+差异报告示例：
 
 ```markdown
+# Best practices — Solutions by scenario: Diff report
+
 ## Summary
 
-| Metric | Count |
-|--------|-------|
-| Total claims | 32 |
-| Confirmed | 22 |
-| Mismatch | 5 |
-| Undocumented | 3 |
+| 指标 | 数量 |
+|------|------|
+| 提取声明总数 | 32 |
+| 确认匹配 | 22 |
+| 不匹配 | 5 |
+| 未记录 | 3 |
 
-## C1 — Missing AI scenario documentation [High]
+## C1 — 缺少 AI 场景文档 [高]
 
-**Document claim**: 4 scenarios (APIs, Web pages, Uploads, Other)
-**Console fact**: 6 scenarios in 2 groups (AI services + Generic)
-**Recommendation**: Add documentation for AI scenarios
+**文档声明**：4 个场景（APIs、Web pages、Uploads、Other）
+**控制台事实**：6 个场景，分 2 组（AI services + Generic）
+**修订建议**：补充 AI services 和 AI download 两个场景的文档
 ```
 
-## Requirements
+## 常见问题
+
+### 浏览器打开后立即关闭
+
+**原因**：Trae IDE 沙箱与 Chrome 沙箱冲突，GPU 进程崩溃。
+
+**解决**：确认 `.playwright/cli.config.json` 的 `launchOptions.args` 包含 `--no-sandbox` 和 `--disable-gpu-sandbox`。
+
+### 认证状态加载后仍显示未登录
+
+**原因**：`state-load` 只注入 cookies，已渲染的页面不会自动刷新。
+
+**解决**：加载认证后，执行 `goto` 导航到目标 URL 触发页面刷新。
+
+### 多步表单卡在中间步骤
+
+**原因**：部分表单（如"添加域名"向导）需要有效测试数据才能通过验证。
+
+**解决**：复用已有数据并修改前缀。例如，从域名列表中选一个已有域名，修改前缀后填入，通常可绕过所有权验证。
+
+### 认证过期
+
+**解决**：重新运行 `node bin/doc-verify.js login`，手动登录后保存新的认证状态。
+
+## 系统要求
 
 - Node.js 18+
 - [@playwright/cli](https://github.com/microsoft/playwright-cli) >= 0.1.12
-- Chromium browser (installed via `npx playwright-cli install-browser chromium`)
-- An AI agent that supports Skills (Claude Code, Trae, Copilot)
+- Chromium 浏览器（通过 `npx playwright-cli install-browser chromium` 安装）
+- 支持 Skills 的 AI Agent（Claude Code、Trae、Copilot 等）
 
-## License
+## 许可证
 
 Apache-2.0
