@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://doc-verify/schemas/exploration-report.v1.json",
+  "title": "Exploration Report v1",
+  "description": "Coverage summary produced by console-explorer. Lists every page from the navigation tree as completed / partial / blocked, and explains why blocked pages failed.",
+  "type": "object",
+  "required": ["explored_at", "pages_total", "pages_completed", "pages_partial", "pages_blocked"],
+  "properties": {
+    "$schema": { "const": "exploration-report/v1" },
+    "explored_at": { "type": "string", "format": "date-time" },
+    "pages_total": { "type": "integer", "minimum": 0 },
+    "pages_completed": { "type": "integer", "minimum": 0 },
+    "pages_partial": { "type": "integer", "minimum": 0 },
+    "pages_blocked": { "type": "integer", "minimum": 0 },
+    "blocked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page", "reason"],
+        "properties": {
+          "page": { "type": "string" },
+          "blocked_at_step": { "type": ["integer", "null"] },
+          "reason": { "type": "string" },
+          "strategies_tried": { "type": "array", "items": { "type": "string" } },
+          "fallback": { "type": "string" }
+        }
+      }
+    },
+    "partial": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page", "reason"],
+        "properties": {
+          "page": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,232 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://doc-verify/schemas/ui-code-facts.v1.json",
+  "title": "UI Code Facts v1",
+  "description": "Structured facts describing a product UI. Produced by ui-code-fact-extractor (from source code) and console-explorer (from live console). Both share this schema so downstream tools can compare them apples-to-apples.",
+  "type": "object",
+  "required": ["meta", "pages"],
+  "properties": {
+    "$schema": { "const": "ui-code-facts/v1" },
+    "meta": {
+      "type": "object",
+      "required": ["extraction_time", "extraction_confidence", "locale", "locales"],
+      "properties": {
+        "extraction_time": { "type": "string", "format": "date-time" },
+        "source_repo": { "type": ["string", "null"] },
+        "tech_stack": {
+          "type": "object",
+          "properties": {
+            "framework": { "type": "string" },
+            "language": { "type": "string" },
+            "i18n_solution": { "type": "string" },
+            "ui_library": { "type": "string" },
+            "build_tool": { "type": "string" }
+          }
+        },
+        "extraction_confidence": { "enum": ["high", "medium", "low"] },
+        "locale": { "type": "string" },
+        "locales": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "source": { "enum": ["source-code", "console-explored", "merged"] }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/navItem" }
+        }
+      }
+    },
+    "pages": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/page" }
+    },
+    "api_interfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "method": { "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] },
+          "path": { "type": "string" },
+          "request_type": { "type": ["string", "null"] },
+          "response_type": { "type": ["string", "null"] },
+          "source_file": { "type": ["string", "null"] }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "i18nText": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      ]
+    },
+    "evidence": {
+      "enum": ["source-code", "explored", "confirmed", "source-only", "inferred", "partial"]
+    },
+    "navItem": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "$ref": "#/definitions/i18nText" },
+        "path": { "type": ["string", "null"] },
+        "icon": { "type": ["string", "null"] },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/navItem" }
+        },
+        "evidence": { "$ref": "#/definitions/evidence" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "properties": {
+        "title": { "$ref": "#/definitions/i18nText" },
+        "source_file": { "type": ["string", "null"] },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "$ref": "#/definitions/i18nText" },
+              "type": { "enum": ["tab", "section", "panel", "wizard-step", "collapse"] },
+              "source_file": { "type": ["string", "null"] },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/field" }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label"],
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "$ref": "#/definitions/i18nText" },
+              "type": { "enum": ["button", "link", "icon-button"] },
+              "disabled_condition": { "type": ["string", "null"] },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "validation": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field"],
+            "properties": {
+              "field": { "type": "string" },
+              "rule": { "type": "string" },
+              "regex": { "type": ["string", "null"] },
+              "error_message": { "$ref": "#/definitions/i18nText" }
+            }
+          }
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["description", "value"],
+            "properties": {
+              "description": { "type": "string" },
+              "value": { "type": ["number", "string"] },
+              "source_file": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "help_texts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["target", "content"],
+            "properties": {
+              "target": { "type": "string" },
+              "content": { "$ref": "#/definitions/i18nText" },
+              "type": { "enum": ["tooltip", "description", "placeholder", "help-icon"] }
+            }
+          }
+        },
+        "platform_diffs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "flag": { "type": "string" },
+              "field": { "type": ["string", "null"] },
+              "description": { "type": "string" },
+              "value_a": { "type": "object" },
+              "value_b": { "type": "object" }
+            }
+          }
+        },
+        "flows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "steps"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "$ref": "#/definitions/i18nText" },
+              "type": { "enum": ["wizard", "modal", "sequential", "state-machine"] },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["order"],
+                  "properties": {
+                    "order": { "type": "integer", "minimum": 1 },
+                    "description": { "$ref": "#/definitions/i18nText" },
+                    "source_file": { "type": ["string", "null"] },
+                    "evidence": { "$ref": "#/definitions/evidence" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["id", "label", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "$ref": "#/definitions/i18nText" },
+        "type": {
+          "enum": ["input", "select", "switch", "radio", "checkbox", "textarea", "number", "date", "slider", "color", "combobox", "spinbutton"]
+        },
+        "required": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "value": { "type": ["string", "number", "boolean", "null"] },
+              "label": { "$ref": "#/definitions/i18nText" }
+            }
+          }
+        },
+        "default": {},
+        "placeholder": { "$ref": "#/definitions/i18nText" },
+        "source_file": { "type": ["string", "null"] },
+        "evidence": { "$ref": "#/definitions/evidence" },
+        "evidence_screenshot": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

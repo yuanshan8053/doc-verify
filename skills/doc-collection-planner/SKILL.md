@@ -1,179 +1,151 @@
 ---
 name: doc-collection-planner
-description: Generate a structured collection plan from documentation and optional source code, to guide fact collection from the product console. Use when you need to plan how to verify a document against the actual product UI.
-allowed-tools: Read, Bash(cat:*), Bash(find:*), Bash(grep:*), Bash(jq:*)
+version: 0.2.0
+description: Build an audit plan that crosswalks a document against an already-collected fact base. Facts are the input; the document is the suspect. Use AFTER console-explorer has produced ui-console-facts.json (or after merged-facts in Mode A).
+allowed-tools: Read, Bash(cat:*), Bash(find:*), Bash(grep:*), Bash(jq:*), Bash(node:*)
 ---
 
-# Doc Collection Planner
+# Doc Collection Planner (v2 — fact-driven)
 
 ## Mission
 
-Analyze a documentation file and (optionally) source code facts to generate a structured collection plan. The plan defines what facts to verify, where to find them, what test data is needed, and what confidence level each expected fact has.
+Produce an audit plan that lists, for every fact, whether the document mentions it; and for every document claim, whether a fact supports it. The plan does **not** drive console navigation — that work was already done by `console-explorer`.
 
-## Step 0: Read Project Configuration
+## Inversion vs v1
 
-Read `config/project.json` to determine:
-- `source_code_path`: If present → Mode A (source-enhanced), read `{fact_base}/source-facts/*.json`
-- `docs_path`: Root directory of documentation files
-- `locale`: Primary language for matching
-- `locales`: All supported languages
-- `fact_base`: Path to fact-base directory (e.g., `fact-base/iga-byteplus-en/`)
+v1 read the document first and then planned what to verify. That made the document the source of truth, which is the opposite of the goal. v2 reads facts first and treats the document as a hypothesis to audit.
 
-## Step 1: Parse the Document
+## Step 0: Read inputs
 
-Read the target document and extract:
+Read `config/project.json`:
+- `fact_base` → root for inputs and outputs
+- `docs_path` + the target doc(s)
+- `mode`
 
-### 1.1 Static Claims
+Read facts (in priority order, take whichever exists):
+1. `{fact_base}/merged-facts/ui-merged-facts.json` (Mode A)
+2. `{fact_base}/console-facts/ui-console-facts.json` (Mode B)
 
-For each UI element described in the document, extract:
-- **Element reference**: What the document calls it (label, name, path)
-- **Expected state**: What the document says about it (exists, has options X/Y/Z, default value is V)
-- **Location hint**: Where in the document this claim appears (section, line)
-- **Confidence**: How certain we are that this claim is accurate
-  - `high`: Document is detailed and specific (e.g., "Select from: A, B, C")
-  - `medium`: Document is vague or could be interpreted multiple ways
-  - `low`: Document is clearly outdated or contradicts other evidence
+If neither exists → return `precondition_missing` and instruct the orchestrator to run `console-explorer` first. **Do not** attempt to plan from the document alone — that re-introduces the v1 failure mode.
 
-### 1.2 Flow Claims
+Read `{fact_base}/console-facts/exploration-report.json` to know which pages are `partial`/`blocked`.
 
-For each multi-step operation described in the document, extract:
-- **Flow name**: What operation is being described
-- **Steps**: Ordered list of actions (click, fill, select, etc.)
-- **Expected outcome**: What should happen after the flow
-- **Test data needed**: Whether the flow requires input data to execute
-- **Confidence**: How certain we are the steps are accurate
+## Step 1: Iterate facts → find doc coverage
 
-### 1.3 Implicit Claims
+For every fact in the fact base (navigation items, pages, sections, fields, options, validation, defaults, help text, limits, flows, platform diffs):
 
-Claims not explicitly stated but implied by the document:
-- If a page is described, it implies the page exists
-- If options are listed, it implies those are the ONLY options
-- If a step is described, it implies the step is required
+1. Search the document text for references to the fact (label, id, synonym).
+2. Classify coverage:
+   - `documented` — fact mentioned with matching value
+   - `documented_mismatch` — fact mentioned but value differs (high-priority finding)
+   - `undocumented` — fact never mentioned (medium-priority finding)
+3. For `documented_mismatch`, capture both sides verbatim.
 
-## Step 2: Cross-Reference with Source Code Facts (Mode A Only)
+Skip facts with `evidence: "source-only"` — those are not authoritative for documentation audit.
 
-If `ui-code-facts.json` exists, cross-reference document claims with source code facts:
+Output: `claims_audit[]`.
 
-### 2.1 Match Claims to Source Facts
+## Step 2: Iterate doc → find fact support
 
-For each claim, attempt to find a matching entry in the source facts:
-- Navigation claims → match against `navigation.items[]`
-- Page structure claims → match against `pages.{path}.sections[]`
-- Field claims → match against `pages.{path}.fields[]`
-- Option claims → match against `pages.{path}.fields[].options[]`
-- Validation claims → match against `pages.{path}.validation[]`
-- Default value claims → match against `pages.{path}.fields[].default`
-- Help text claims → match against `pages.{path}.help_texts[]`
-- Flow claims → match against `pages.{path}.flows[]`
+Parse the document for verifiable claims (see Claim Patterns below). For each claim:
 
-### 2.2 Update Confidence
+1. Look up the corresponding fact.
+2. Classify support:
+   - `fact_supports` — claim matches a fact
+   - `fact_contradicts` — claim contradicts a fact (high-priority finding)
+   - `fact_missing` — no fact found, AND exploration covered the page → claim is suspicious (medium)
+   - `fact_unknown` — no fact found, AND the page is `partial`/`blocked` → flag for additional exploration (low)
 
-- If source code confirms the claim → upgrade confidence to `high`
-- If source code contradicts the claim → downgrade confidence to `low`, note the discrepancy
-- If source code has no matching entry → keep original confidence, mark as `unverified_in_source`
+Output: `doc_claims[]`.
 
-### 2.3 Identify Unknowns
+### Claim patterns
 
-Source code may reveal UI elements not mentioned in the document:
-- Sections in source but not in document → mark as `undocumented`
-- Fields in source but not in document → mark as `undocumented`
-- Platform differences in source but not in document → mark as `undocumented`
+| Claim Type | Pattern | Locator in fact base |
+|-----------|---------|----------------------|
+| Navigation exists | "Click **X** in the sidebar" | `navigation.items[]` |
+| Section exists | "On the **X** tab" | `pages.{path}.sections[]` |
+| Field exists | "In the **X** field" | `pages.{path}.fields[]` |
+| Field type | "Select **X** from the dropdown" | `pages.{path}.fields[].type` |
+| Option exists | "Options: A, B, C" | `pages.{path}.fields[].options[]` |
+| Option exhaustive | "Select one of: A, B, C" | options as a set |
+| Default value | "Default is X" | `pages.{path}.fields[].default` |
+| Required | "Required field" | `pages.{path}.fields[].required` |
+| Validation | "Must match X" | `pages.{path}.validation[]` |
+| Help text | "Description: X" | `pages.{path}.help_texts[]` |
+| Limit | "Maximum N items" | `pages.{path}.limits[]` |
+| Flow step | "1. Click X" | `pages.{path}.flows[].steps[]` |
+| Step order | "First X, then Y" | `flows[].steps[].order` |
+| Step count | "3-step process" | `flows[].steps.length` |
 
-## Step 3: Generate Collection Plan
+## Step 3: Identify exploration gaps
 
-Output a structured collection plan:
+For pages marked `partial` or `blocked` in exploration-report:
+
+- If the document makes claims about these pages, mark `additional_exploration_needed`.
+- Recommend a `recovery_strategy` per blocked page: which Test Data Strategy to retry, or which prerequisite to satisfy.
+
+## Step 4: Output audit plan
+
+Write `{fact_base}/audit-plan.json`. The output validates against `schemas/audit-plan.v1.json`:
 
 ```json
 {
-  "plan_id": "unique-id",
-  "source_doc": "relative path to document",
-  "mode": "source-enhanced | console-only",
-  "target_pages": [
+  "$schema": "audit-plan/v1",
+  "plan_id": "ap-{timestamp}",
+  "source_doc": "relative/path/to/doc.md",
+  "fact_base_snapshot": {
+    "facts_file": "merged-facts/ui-merged-facts.json | console-facts/ui-console-facts.json",
+    "explored_at": "ISO-8601",
+    "pages_completed": 22,
+    "pages_partial": 2,
+    "pages_blocked": 0
+  },
+  "claims_audit": [
     {
-      "path": "/page-path",
-      "title": "page title",
-      "source_file": "relative path or null"
+      "id": "ca-001",
+      "fact_path": "pages./caching.fields.rule_type",
+      "fact_summary": "select with options [path, file, ext]",
+      "doc_coverage": "documented | documented_mismatch | undocumented",
+      "doc_locations": ["section header / line range"],
+      "doc_says": "verbatim excerpt or null",
+      "evidence": "explored | confirmed | source-only"
     }
   ],
-  "static_claims": [
+  "doc_claims": [
     {
-      "id": "claim-001",
-      "type": "navigation | section | field | option | default | validation | help_text",
-      "doc_location": "section name or line reference",
-      "doc_description": "what the document says",
-      "expected_value": "expected fact value",
-      "confidence": "high | medium | low",
-      "source_match": "path in ui-code-facts.json or null",
-      "source_value": "value from source code or null",
-      "source_confirms": true | false | null,
-      "verification_needed": true | false,
-      "verification_method": "snapshot | screenshot | click_expand | eval"
+      "id": "dc-001",
+      "claim_type": "option_exhaustive",
+      "doc_location": "section / line",
+      "doc_says": "Select one of: path, file, ext",
+      "fact_path": "pages./caching.fields.rule_type.options",
+      "fact_says": "[path, file, ext, regex]",
+      "support": "fact_supports | fact_contradicts | fact_missing | fact_unknown",
+      "severity": "high | medium | low"
     }
   ],
-  "flow_claims": [
+  "additional_exploration_needed": [
     {
-      "id": "flow-001",
-      "name": "flow name",
-      "doc_location": "section name or line reference",
-      "steps": [
-        {
-          "order": 1,
-          "action": "click | fill | select | type | press",
-          "target": "element description",
-          "value": "input value or null",
-          "confidence": "high | medium | low"
-        }
-      ],
-      "test_data_required": true | false,
-      "test_data": {
-        "field_name": "suggested test value"
-      },
-      "source_match": "path in ui-code-facts.json or null",
-      "verification_needed": true | false
+      "page": "/iga/domains/add",
+      "reason": "wizard step 3 was blocked by ownership verification",
+      "recovery_strategy": "Strategy A: pick existing domain, modify prefix"
     }
-  ],
-  "unknowns": [
-    {
-      "type": "undocumented_section | undocumented_field | undocumented_option | platform_diff",
-      "source_reference": "path in ui-code-facts.json",
-      "description": "what was found in source but not in document"
-    }
-  ],
-  "console_verification_plan": {
-    "pages_to_visit": ["list of pages"],
-    "elements_to_expand": ["dropdowns to click open"],
-    "screenshots_needed": ["list of pages/elements to screenshot"],
-    "flows_to_execute": ["list of flows to test"],
-    "test_data_needed": {
-      "field_name": "suggested value"
-    }
-  }
+  ]
 }
 ```
 
-## Step 4: Determine Verification Strategy
+## Step 5: Hand off
 
-### Mode A (Source-Enhanced)
+Print a one-line summary to stdout:
 
-Only verify claims that:
-1. Have `low` confidence (likely outdated)
-2. Have no source match (`source_match: null`)
-3. Source contradicts (`source_confirms: false`)
-4. Involve dynamic content (cannot be verified from source alone)
+```
+audit-plan written: {fact_base}/audit-plan.json — N claims_audit, M doc_claims, K gaps
+```
 
-### Mode B (Console-Only)
+The orchestrator passes this plan to `doc-fact-verifier` for final report generation.
 
-Verify all claims through console collection.
+## Self-check before exit
 
-## Step 5: Suggest Test Data
-
-For flows that require test data:
-
-1. **From document**: Use example values mentioned in the document
-2. **From source code defaults**: Use `fields[].default` values from source facts
-3. **From validation rules**: Infer valid values from `validation[]` entries (e.g., if regex requires `/path/`, suggest `/test/`)
-4. **Safe values**: Prefer non-destructive test values (e.g., `test-verify.example.com` for domain fields)
-
-## Step 6: Output
-
-Save the collection plan to `{fact_base}/collection-plan.json`.
+- [ ] `claims_audit[]` covers every fact except those with `evidence: "source-only"`.
+- [ ] `doc_claims[]` covers every claim pattern listed in Step 2.
+- [ ] `additional_exploration_needed[]` includes every `partial`/`blocked` page that the doc references.
+- [ ] Output validates: `node bin/doc-verify.js validate {fact_base}/audit-plan.json`.

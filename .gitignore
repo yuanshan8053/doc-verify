@@ -11,3 +11,11 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# POCs — proof-of-concepts (per product)
+# Contains code, screenshots, verification results
+# Each user generates their own from source code + console
+poc/
+
+# Local examples — not published to the repository
+examples/

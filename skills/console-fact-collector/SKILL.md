@@ -1,7 +1,8 @@
 ---
 name: console-fact-collector
-description: Collect or verify UI facts from a product console using Playwright CLI. Supports two modes: sampling verification (Mode A, when source code facts exist) and full collection (Mode B, when no source code is available).
-allowed-tools: Bash(playwright-cli:*), Bash(npx:*), Read
+version: 0.2.0
+description: Collect or verify UI facts from a product console using Playwright CLI. In v2, the dominant pattern is exploration (delegated to console-explorer); this skill handles targeted verification, test-data-driven flows, and fact merging. Includes a "fail → pivot" decision table so the agent never stalls when a doc-driven step fails.
+allowed-tools: Bash(npx:*), Bash(node:*), Bash(jq:*), Read
 ---
 
 # Console Fact Collector
@@ -241,6 +242,58 @@ Merge source facts and console facts:
 4. Record all conflicts in `verification-results.json`
 
 Save merged facts to `{fact_base}/merged-facts/ui-merged-facts.json`.
+
+## Fail → Pivot Decision Table ⭐ (v0.2.0)
+
+> **Core rule**: when a doc-driven step fails, the agent MUST pivot — never re-try the same failing step more than 2× and never abandon the page silently. The whole point of this project is to find doc bugs; a failure IS a finding, but only if you keep going to confirm it.
+
+The agent consults this table whenever a Playwright action does not produce the expected snapshot result.
+
+| Symptom on console | Likely cause | Pivot action (in order) | Record as |
+|---|---|---|---|
+| Click target by text not found | Doc uses wrong button label | 1. `eval` to dump all `role=button` text on the page<br>2. Fuzzy-match by lowercase + token-set<br>3. If a single close match (≥0.7) exists, click it and continue | `discrepancy: label_mismatch` (HIGH) — record both doc label and actual label |
+| Click target appears multiple times | Ambiguous reference in doc | 1. Disambiguate by parent section / nearest heading<br>2. Prefer the one inside the section the doc currently describes | `discrepancy: ambiguous_reference` (LOW) |
+| Field exists but wrong type (doc says select, actual is input) | UI changed type | Snapshot field, capture actual `role`, continue with type-appropriate input | `discrepancy: type_mismatch` (MEDIUM) |
+| Dropdown options differ from doc | Options were added/removed | Open dropdown, snapshot all `role=option`, compare set | `discrepancy: option_*_in_doc` |
+| Form validation blocks Next | Doc steps are insufficient or wrong order | 1. Read validation message verbatim<br>2. Apply Test Data Strategy A (reuse existing) → C (minimal input)<br>3. If still blocked, apply Strategy B (API) | If 3 strategies fail → `flow_blocked` (HIGH) with the validation message |
+| Wizard step count differs | Steps added/removed in product | Capture all step labels via `role="navigation"` indicator; do not rely on doc step count | `discrepancy: step_missing` or `step_extra` (HIGH) |
+| Step order differs | Reordered in product | Continue executing in actual order (not doc order) | `discrepancy: step_order_changed` (MEDIUM) |
+| Element only appears after toggling another | Conditional rendering not in doc | Toggle the parent and re-snapshot; record the dependency | `discrepancy: conditional_field_undocumented` (MEDIUM) |
+| Page redirects unexpectedly | URL changed or feature removed | Capture redirect chain via `eval`; do not follow doc URL further | `discrepancy: page_relocated` or `element_not_found` (HIGH) |
+| Auth required mid-flow | Step requires extra permission | Stop the flow, surface `auth_required_for_step`, do NOT log out the agent | `flow_blocked` with `cause: insufficient_permission` |
+| Snapshot returns empty / timeout | Slow page or in-flight XHR | `eval document.readyState === 'complete'` + 2s grace, retry once | If still empty → `page_unresponsive`, mark `partial`, move on |
+| Same step fails twice | Either pivot worked once (great) or path is dead | After 2 attempts on the SAME action, **abandon the doc-driven path and switch to `console-explorer`** for this page | `flow_blocked`, then `recovery: explorer_invoked` |
+
+### Recovery loop (mandatory)
+
+```
+attempt N
+  ├─ success → continue
+  └─ fail
+       ├─ N < 2 → pivot via table above, attempt N+1
+       └─ N ≥ 2 → mark page partial, invoke console-explorer for this page, stop driving from doc
+```
+
+**Do not** sit in a retry loop. **Do not** silently move to the next claim. **Do not** delete the failed claim from the plan — it becomes the most valuable finding (a doc bug).
+
+### Failure recording schema
+
+Every pivot must produce an entry in `{fact_base}/console-facts/flow-deviations.json`:
+
+```json
+{
+  "claim_id": "claim-007",
+  "doc_says": "Click \"Save changes\"",
+  "console_actual": "Button labeled \"Save\" only",
+  "pivot_action": "fuzzy_match_token_set",
+  "pivot_outcome": "succeeded",
+  "discrepancy_type": "label_mismatch",
+  "severity": "high",
+  "evidence_screenshot": "screenshots/save-button.png"
+}
+```
+
+This file is the input to `doc-fact-verifier` for the "doc-driven failures" section of the diff report.
 
 ## Test Data Strategy
 

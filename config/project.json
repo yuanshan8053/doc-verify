@@ -1,8 +1,8 @@
 {
   "project": "iga-docs",
   "console_url": "https://console.byteplus.com/iga",
-  "source_code_path": "/Users/bytedance/Documents/DCDN 写作/poc/volc-iga",
-  "docs_path": "/Users/bytedance/Documents/DCDN 写作/poc/Docs_BP-智能全球加速",
+  "source_code_path": "examples/iga-byteplus/volc-iga",
+  "docs_path": "examples/iga-byteplus/Docs_BP-智能全球加速",
   "mode": "source-enhanced",
   "locale": "en",
   "locales": ["zh", "en"],

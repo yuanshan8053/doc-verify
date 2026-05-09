@@ -1,7 +1,8 @@
 ---
 name: doc-fact-verifier
-description: Compare documentation claims against a fact base to detect discrepancies, generate a Markdown diff report, and propose revision suggestions. Use when you need to verify if a document accurately describes the product UI.
-allowed-tools: Read, Bash(cat:*), Bash(jq:*), Bash(grep:*)
+version: 0.2.0
+description: Render the final Markdown diff report from an audit-plan produced by doc-collection-planner. Compares documentation claims against a fact base, classifies discrepancies by severity, and proposes specific revisions. Use AFTER audit-plan.json exists.
+allowed-tools: Read, Bash(cat:*), Bash(jq:*), Bash(grep:*), Bash(node:*)
 ---
 
 # Doc Fact Verifier
@@ -10,66 +11,41 @@ allowed-tools: Read, Bash(cat:*), Bash(jq:*), Bash(grep:*)
 
 Compare documentation claims against the merged fact base, detect discrepancies, classify them by severity, and generate a Markdown diff report with revision suggestions.
 
-## Step 0: Read Configuration and Fact Base
+## Step 0: Read inputs
 
-1. Read `config/project.json` → determine locale, mode, `fact_base` path
-2. Read `{fact_base}/merged-facts/ui-merged-facts.json` (Mode A) or `{fact_base}/console-facts/ui-console-facts.json` (Mode B)
-3. Read the target document
+In v0.2.0 this skill consumes the **audit plan** rather than re-deriving claims:
 
-## Step 1: Extract Document Claims
+1. Read `config/project.json` → `fact_base`, `locale`, `mode`.
+2. Read `{fact_base}/audit-plan.json` (produced by `doc-collection-planner`).
+3. Read `{fact_base}/merged-facts/ui-merged-facts.json` (Mode A) or `{fact_base}/console-facts/ui-console-facts.json` (Mode B) for evidence references.
+4. Read the target document for verbatim excerpts when generating revision suggestions.
 
-### 1.1 Static Claims
+If `audit-plan.json` is missing, return `precondition_missing` and instruct the orchestrator to run `doc-collection-planner` first. **Do not** re-extract claims independently — that path was deprecated in v0.2.0.
 
-Parse the document and extract verifiable claims:
+## Step 1: Consume the audit plan
 
-| Claim Type | Pattern | Example |
-|-----------|---------|---------|
-| Navigation exists | "Click **X** in the sidebar" | Sidebar has "X" menu item |
-| Section exists | "On the **X** tab" | Page has "X" tab/section |
-| Field exists | "In the **X** field" | Page has "X" input/select |
-| Field type | "Select **X** from the dropdown" | Field "X" is a select |
-| Option exists | "Options: A, B, C" | Field has options A, B, C |
-| Option is only | "Select one of: A, B, C" | These are ALL options |
-| Default value | "Default is X" | Field default is X |
-| Required field | "Required field" | Field is required |
-| Validation rule | "Must be X" | Field validates as X |
-| Help text | "Description: X" | Help text says X |
-| Limit | "Maximum N items" | Limit is N |
+The audit plan already contains:
 
-### 1.2 Flow Claims
+- `claims_audit[]` — every fact, classified as `documented` / `documented_mismatch` / `undocumented`.
+- `doc_claims[]` — every doc claim, classified as `fact_supports` / `fact_contradicts` / `fact_missing` / `fact_unknown`, with `severity`.
+- `additional_exploration_needed[]` — pages where exploration was incomplete.
 
-Extract multi-step operation descriptions:
+Iterate the plan. For every entry, locate the corresponding fact in the fact base by `fact_path` and the corresponding text in the document by `doc_location`. Use these to enrich the report with verbatim excerpts and evidence pointers.
 
-| Claim Type | Pattern | Example |
-|-----------|---------|---------|
-| Step exists | "1. Click X" | Flow has step "Click X" |
-| Step order | "First X, then Y" | X comes before Y |
-| Step count | "3-step process" | Flow has exactly 3 steps |
-| Prerequisite | "Before doing X, you must Y" | Y is prerequisite for X |
-| Outcome | "After clicking X, Y appears" | X leads to Y |
+## Step 2: Map audit entries → report findings
 
-## Step 2: Match Claims to Facts
+Each `doc_claims[]` entry becomes a finding:
 
-### 2.1 Matching Strategy
+| audit `support` | Finding |
+|-----------------|---------|
+| `fact_supports` | ✅ Pass (record in appendix only) |
+| `fact_contradicts` | ❌ Discrepancy — pick discrepancy type from §3 by `claim_type` |
+| `fact_missing` (page explored) | ❌ Element not found |
+| `fact_unknown` (page partial/blocked) | ⚠️ Cannot verify — escalate |
 
-**Precise matching** (when source facts are available):
-- Match by field id, option value, section id
-- Use exact string comparison for labels
-- Compare option lists as sets
+Each `claims_audit[]` entry with `doc_coverage = "undocumented"` becomes a 🆕 finding.
 
-**Fuzzy matching** (when only console facts are available):
-- Match by label text similarity
-- Use case-insensitive comparison
-- Allow minor wording differences
-
-### 2.2 Match Process
-
-For each claim:
-
-1. **Locate target page** in fact base
-2. **Find matching element** by label/id
-3. **Compare claim value** with fact value
-4. **Record result**: ✅ match / ❌ mismatch / ⚠️ partial / 🆕 undocumented
+Each `claims_audit[]` entry with `doc_coverage = "documented_mismatch"` becomes a ❌ finding (cross-checked with `doc_claims[]` to avoid duplicates).
 
 ## Step 3: Classify Discrepancies
 

@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://doc-verify/schemas/flow-deviations.v1.json",
+  "title": "Flow Deviations v1",
+  "description": "Records of doc-driven flow steps that diverged from the actual console behaviour. Each entry is a candidate doc bug — produced by console-fact-collector pivots.",
+  "type": "object",
+  "required": ["recorded_at", "deviations"],
+  "properties": {
+    "$schema": { "const": "flow-deviations/v1" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "doc_says", "console_actual", "discrepancy_type", "severity"],
+        "properties": {
+          "claim_id": { "type": "string" },
+          "doc_says": { "type": "string" },
+          "console_actual": { "type": "string" },
+          "pivot_action": {
+            "enum": [
+              "fuzzy_match_token_set",
+              "disambiguate_by_section",
+              "type_aware_input",
+              "open_dropdown_enumerate",
+              "test_data_strategy_a",
+              "test_data_strategy_b",
+              "test_data_strategy_c",
+              "capture_actual_step_labels",
+              "follow_actual_order",
+              "toggle_parent",
+              "capture_redirect_chain",
+              "explorer_invoked"
+            ]
+          },
+          "pivot_outcome": { "enum": ["succeeded", "failed", "partial"] },
+          "discrepancy_type": {
+            "enum": [
+              "label_mismatch",
+              "ambiguous_reference",
+              "type_mismatch",
+              "option_missing_in_doc",
+              "option_extra_in_doc",
+              "step_missing",
+              "step_extra",
+              "step_order_changed",
+              "conditional_field_undocumented",
+              "page_relocated",
+              "element_not_found",
+              "flow_blocked",
+              "page_unresponsive"
+            ]
+          },
+          "severity": { "enum": ["high", "medium", "low"] },
+          "evidence_screenshot": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

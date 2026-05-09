@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://doc-verify/schemas/audit-plan.v1.json",
+  "title": "Audit Plan v1",
+  "description": "Output of doc-collection-planner v0.2.0+. Crosswalks document claims against an existing fact base. Drives doc-fact-verifier.",
+  "type": "object",
+  "required": ["plan_id", "source_doc", "fact_base_snapshot", "claims_audit", "doc_claims"],
+  "properties": {
+    "$schema": { "const": "audit-plan/v1" },
+    "plan_id": { "type": "string" },
+    "source_doc": { "type": "string" },
+    "fact_base_snapshot": {
+      "type": "object",
+      "required": ["facts_file"],
+      "properties": {
+        "facts_file": { "type": "string" },
+        "explored_at": { "type": ["string", "null"], "format": "date-time" },
+        "pages_completed": { "type": "integer", "minimum": 0 },
+        "pages_partial": { "type": "integer", "minimum": 0 },
+        "pages_blocked": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "claims_audit": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "fact_path", "doc_coverage"],
+        "properties": {
+          "id": { "type": "string" },
+          "fact_path": { "type": "string" },
+          "fact_summary": { "type": "string" },
+          "doc_coverage": { "enum": ["documented", "documented_mismatch", "undocumented"] },
+          "doc_locations": { "type": "array", "items": { "type": "string" } },
+          "doc_says": { "type": ["string", "null"] },
+          "evidence": { "enum": ["explored", "confirmed", "source-only", "inferred", "partial"] }
+        }
+      }
+    },
+    "doc_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "claim_type", "doc_location", "support"],
+        "properties": {
+          "id": { "type": "string" },
+          "claim_type": {
+            "enum": [
+              "navigation_exists",
+              "section_exists",
+              "field_exists",
+              "field_type",
+              "option_exists",
+              "option_exhaustive",
+              "default_value",
+              "required",
+              "validation",
+              "help_text",
+              "limit",
+              "step_exists",
+              "step_order",
+              "step_count",
+              "prerequisite",
+              "outcome"
+            ]
+          },
+          "doc_location": { "type": "string" },
+          "doc_says": { "type": ["string", "null"] },
+          "fact_path": { "type": ["string", "null"] },
+          "fact_says": { "type": ["string", "null"] },
+          "support": { "enum": ["fact_supports", "fact_contradicts", "fact_missing", "fact_unknown"] },
+          "severity": { "enum": ["high", "medium", "low"] }
+        }
+      }
+    },
+    "additional_exploration_needed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page", "reason"],
+        "properties": {
+          "page": { "type": "string" },
+          "reason": { "type": "string" },
+          "recovery_strategy": { "type": "string" }
+        }
+      }
+    }
+  }
+}
